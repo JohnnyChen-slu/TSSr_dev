@@ -21,6 +21,17 @@
                              ,sequencingQualityThreshold
                              ,mappingQualityThreshold
                              ,softclippingAllowed){
+  ## check the bam.files is empty or not
+  if (length(bam.files) == 0) {
+    stop("Error: 'bam.files' is empty.")
+  }
+  if (!exists("Genome")) {
+    stop("Error: 'Genome' is not defined.")
+  }
+  if (length(sampleLabels) != length(bam.files)) {
+    stop("Error: Length of 'sampleLabels' must match the number of 'bam.files'.")
+  }
+  
   ##define variable as a NULL value
   chr = pos = tag_count = strand = NULL
 
@@ -42,20 +53,16 @@
     qual <- bam[[1]]$qual
     start <- 1
     # chunksize <- 1e6
-    qa.avg <- vector(mode = "integer")
-    repeat {
-      if (start + chunksize <= length(qual)) {
-        end <- start + chunksize
-      } else {
-        end <- length(qual)
-      }
-      qa.avg <- c(qa.avg, as.integer(sapply(as(qual[start:end], "IntegerList"),mean)))
-      if (end == length(qual)) {
-        break
-      } else {
-        start <- end + 1
-      }
-    }
+num_chunks <- ceiling(length(qual) / chunksize)
+qa.avg <- vector(mode = "integer", length = num_chunks)
+chunk_index <- 1
+while (start <= length(qual)) {
+  end <- min(start + chunksize - 1, length(qual))
+  qa.avg[chunk_index] <- as.integer(mean(as.integer(qual[start:end])))
+  start <- end + 1
+  chunk_index <- chunk_index + 1
+}
+
     cigar <- bam[[1]]$cigar
     start <- 1
     # chunksize <- 1e6
