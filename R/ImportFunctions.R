@@ -66,27 +66,53 @@ while (start <= length(qual)) {
     cigar <- bam[[1]]$cigar
     start <- 1
     # chunksize <- 1e6
-    mapped.length <- vector(mode = "integer")
-    repeat {
-      if (start + chunksize <= length(cigar)) {
-        end <- start + chunksize
-      } else {
-        end <- length(cigar)
-      }
-      if(softclippingAllowed){
-        mapped.length <- c(mapped.length, 
-                           as.integer(sum(as(str_extract_all(bam[[1]]$cigar[start:end], "([0-9]+)"),"IntegerList")))-
-                             ifelse(is.na(sub("S","",str_extract(bam[[1]]$cigar[start:end], 
-                                                                 "[0-9]+S"))),0,sub("S","",str_extract(bam[[1]]$cigar[start:end], "[0-9]+S"))))
-      }else{
-        mapped.length <- c(mapped.length, as.integer(sum(as(str_extract_all(bam[[1]]$cigar[start:end], "([0-9]+)"),"IntegerList"))))
-      }
-      if (end == length(cigar)) {
-        break
-      } else {
-        start <- end + 1
-      }
+## update 20240605
+# Initialize the vector for storing mapped lengths
+mapped.length <- integer(0)
+
+# Pre-process the CIGAR strings to extract all numeric values and identify soft-clipped segments
+# This avoids repeated string operations inside the loop
+numeric_parts <- lapply(bam[[1]]$cigar, function(cigar) {
+  as.integer(str_extract_all(cigar, "[0-9]+")[[1]])
+})
+soft_clipped_lengths <- if (softclippingAllowed) {
+  sapply(bam[[1]]$cigar, function(cigar) {
+    sc_part <- str_extract(cigar, "[0-9]+S")
+    if (is.na(sc_part)) {
+      0
+    } else {
+      as.integer(sub("S", "", sc_part))
     }
+  })
+} else {
+  integer(length(bam[[1]]$cigar))
+}
+
+# Process in chunks to handle large arrays more efficiently
+start <- 1
+while (start <= length(cigar)) {
+  end <- min(start + chunksize - 1, length(cigar))
+  
+  # Calculate the total mapped length by summing numeric parts and adjusting for soft clipping if allowed
+  chunk_numeric_parts <- numeric_parts[start:end]
+  chunk_soft_clipped_lengths <- soft_clipped_lengths[start:end]
+  
+  total_lengths <- vapply(chunk_numeric_parts, sum, numeric(1))
+  if (softclippingAllowed) {
+    total_lengths <- total_lengths - chunk_soft_clipped_lengths
+  }
+  
+  # Append the computed lengths for this chunk to the overall mapped lengths vector
+  mapped.length <- c(mapped.length, total_lengths)
+  
+  if (end == length(cigar)) {
+    break
+  } else {
+    start <- end + 1
+  }
+}
+
+    
     readsGR <- GRanges(seqnames = as.vector(bam[[1]]$rname), IRanges(start = bam[[1]]$pos, width = mapped.length),
                        strand = bam[[1]]$strand, qual = qa.avg, mapq = bam[[1]]$mapq, seq = bam[[1]]$seq, read.length = width(bam[[1]]$seq),
                        flag = bam[[1]]$flag)
