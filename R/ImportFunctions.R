@@ -1,10 +1,17 @@
 ################################################################################
 .getGenome <- function(genomeName) {
-  if (is.null(genomeName)){
-    stop("Can not run this function with a NULL genome.")}
-  if(genomeName %in% rownames(installed.packages()) == FALSE){
-    stop("Requested genome is not installed! Please install required BSgenome package before running TSSr.")}
-  requireNamespace(genomeName)
+  if (is.null(genomeName) || genomeName == "") {
+    stop("Error: 'genomeName' must not be NULL or empty.")
+  }
+  
+  if (!genomeName %in% rownames(installed.packages())) {
+    stop(paste("Error: Requested genome package '", genomeName, "' is not installed. Please install it before running this function.", sep=""))
+  }
+  
+  if (!requireNamespace(genomeName, quietly = TRUE)) {
+    stop(paste("Error: Namespace for '", genomeName, "' could not be loaded. Check if the package is correctly installed.", sep=""))
+  }
+  
   getExportedValue(genomeName, genomeName)
 }
 
