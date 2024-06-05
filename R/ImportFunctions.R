@@ -314,21 +314,27 @@ while (start <= length(cigar)) {
 ##.getTSS_from_TSStable function calls TSS from one TSStable file
 
 .getTSS_from_TSStable <- function(TSStable.file, sampleLabels){
+  # Check if only one file is provided
   if(length(TSStable.file) > 1){
-    stop("Only one file should be provided when inputFilesType = \"TSStable\"!")
+    stop("Only one file should be provided when inputFilesType = 'TSStable', but provided ", length(TSStable.file), " files.")
   }
-  if(file.exists(TSStable.file) == FALSE){
-    stop("Could not locate input file ", TSStable.file)
+  
+  # Check if file exists
+  if(!file.exists(TSStable.file)){
+    stop("Could not locate input file: ", normalizePath(TSStable.file, mustWork = FALSE))
   }
 
-  TSS.all.samples <- read.table(file = TSStable.file, header = TRUE, stringsAsFactors = FALSE
-                                ,colClasses = c("character", "integer", "character", rep("integer", length(sampleLabels)))
-                                ,col.names = c("chr", "pos", "strand", sampleLabels))
-  if(ncol(TSS.all.samples) != (length(sampleLabels) + 3)){
-    stop("Number of provided sample labels must match the number of samples in the TSS table!")
+  # Read the file using fread for better performance and directly create a data.table
+  TSS.all.samples <- fread(file = TSStable.file, header = TRUE, colClasses = c("character", "integer", "character", rep("integer", length(sampleLabels))))
+
+  # Verify the number of columns matches the expected number
+  expected_cols <- length(sampleLabels) + 3
+  if(ncol(TSS.all.samples) != expected_cols){
+    stop("Number of provided sample labels must match the number of samples in the TSS table! Expected columns: ", expected_cols, ", but found ", ncol(TSS.all.samples), " columns.")
   }
-  setDT(TSS.all.samples)
-  TSS.all.samples[,4:ncol(TSS.all.samples)][is.na(TSS.all.samples[,4:ncol(TSS.all.samples)])] =0
+
+  # Replace NA values with 0 in sample columns
+  TSS.all.samples[, (sampleLabels) := lapply(.SD, function(x) fifelse(is.na(x), 0, x)), .SDcols = sampleLabels]
+
   return(TSS.all.samples)
 }
-
