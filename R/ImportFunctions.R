@@ -113,16 +113,44 @@ while (start <= length(cigar)) {
 }
 
     
-    readsGR <- GRanges(seqnames = as.vector(bam[[1]]$rname), IRanges(start = bam[[1]]$pos, width = mapped.length),
-                       strand = bam[[1]]$strand, qual = qa.avg, mapq = bam[[1]]$mapq, seq = bam[[1]]$seq, read.length = width(bam[[1]]$seq),
-                       flag = bam[[1]]$flag)
-    readsGR <- readsGR[as.character(readsGR@seqnames) %in% seqnames(Genome)]
-    readsGR <- readsGR[!(end(readsGR) > seqlengths(Genome)[as.character(seqnames(readsGR))])]
-    GenomicRanges::elementMetadata(readsGR)$mapq[is.na(GenomicRanges::elementMetadata(readsGR)$mapq)] <- Inf
-    readsGR.p <- readsGR[(as.character(strand(readsGR)) == "+" & GenomicRanges::elementMetadata(readsGR)$qual >= 
-                            sequencingQualityThreshold) & GenomicRanges::elementMetadata(readsGR)$mapq >= mappingQualityThreshold]
-    readsGR.m <- readsGR[(as.character(strand(readsGR)) == "-" & GenomicRanges::elementMetadata(readsGR)$qual >= 
-                            sequencingQualityThreshold) & GenomicRanges::elementMetadata(readsGR)$mapq >= mappingQualityThreshold]
+readsGR <- GRanges(
+  seqnames = as.vector(bam[[1]]$rname),
+  IRanges(start = bam[[1]]$pos, width = mapped.length),
+  strand = bam[[1]]$strand,
+  qual = qa.avg,
+  mapq = bam[[1]]$mapq,
+  seq = bam[[1]]$seq,
+  read.length = width(bam[[1]]$seq),
+  flag = bam[[1]]$flag
+)
+
+# 过滤掉在基因组中不存在的染色体
+valid_chromosomes <- as.character(seqnames(Genome))
+readsGR <- readsGR[seqnames(readsGR) %in% valid_chromosomes]
+
+# 过滤掉超过基因组长度的读取
+valid_seqnames <- as.character(seqnames(readsGR))
+seq_lengths <- seqlengths(Genome)[valid_seqnames]
+readsGR <- readsGR[end(readsGR) <= seq_lengths[valid_seqnames]]
+
+# 将 NA 的 mapq 值替换为 Inf
+elementMetadata(readsGR)$mapq[is.na(elementMetadata(readsGR)$mapq)] <- Inf
+
+# 过滤正链读取
+readsGR.p <- readsGR[
+  strand(readsGR) == "+" &
+  elementMetadata(readsGR)$qual >= sequencingQualityThreshold &
+  elementMetadata(readsGR)$mapq >= mappingQualityThreshold
+]
+
+# 过滤负链读取
+readsGR.m <- readsGR[
+  strand(readsGR) == "-" &
+  elementMetadata(readsGR)$qual >= sequencingQualityThreshold &
+  elementMetadata(readsGR)$mapq >= mappingQualityThreshold
+]
+
+    
     if(softclippingAllowed){
       ##------------------------------------------------------------------------
       TSS.p <- data.table(chr = as.character(seqnames(readsGR.p)), 
