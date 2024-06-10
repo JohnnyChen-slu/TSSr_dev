@@ -188,54 +188,60 @@ readsGR.m <- readsGR[
 
 ################################################################################
 .removeNewG <- function(readsGR.p, readsGR.m, Genome) {
-  ##define variable as a NULL value
+  # Define variables as NULL values
   chr = pos = tag_count = Gp = Gm = i = NULL
 
   message("\t-> Removing the bases of the reads if mismatched 'Gs'...")
-  #-----------------------------------------------------------------------------
-  ## plus strand
-  #-----------------------------------------------------------------------------
-  Gp <- which(substr(GenomicRanges::elementMetadata(readsGR.p)$seq, 
-                     start = 1, stop = 1) == "G")
-  i=1
-  while(length(Gp) >0){
-    G.mismatch <- Gp[getSeq(Genome, GenomicRanges::resize(readsGR.p[Gp], width = 1, fix = "start"), as.character = TRUE) != "G"]
-    start(readsGR.p[G.mismatch]) <- start(readsGR.p[G.mismatch]) + as.integer(1)
-    i = i+1
-    Gp <- G.mismatch[which(substr(GenomicRanges::elementMetadata(readsGR.p[G.mismatch])$seq, 
-                      start = 1, stop = i) == paste(rep("G",i), collapse = ""))]
-  }
-  TSS.p <- data.table(chr = as.character(seqnames(readsGR.p)), 
-                      pos = start(readsGR.p), strand = "+", 
-                      #removedG = GenomicRanges::elementMetadata(readsGR.p)$removedG, 
-                      stringsAsFactors = FALSE)
-  #-----------------------------------------------------------------------------
-  ## minus strand
-  #-----------------------------------------------------------------------------
-  Gm <- which(substr(GenomicRanges::elementMetadata(readsGR.m)$seq, 
-                     start = GenomicRanges::elementMetadata(readsGR.m)$read.length,
-                     stop = GenomicRanges::elementMetadata(readsGR.m)$read.length) == "C")
-  i=1
-  while(length(Gm) >0){
-    G.mismatch <- Gm[getSeq(Genome, GenomicRanges::resize(readsGR.m[Gm], width = 1, fix = "start"), as.character = TRUE) != "G"]
-    end(readsGR.m[G.mismatch]) <- end(readsGR.m[G.mismatch]) - as.integer(1)
-    i = i+1
-    Gm <- G.mismatch[which(substr(GenomicRanges::elementMetadata(readsGR.m[G.mismatch])$seq, 
-                                  start = 1, stop = i) == paste(rep("C",i), collapse = ""))]
-  }
-  TSS.m <- data.table(chr = as.character(seqnames(readsGR.m)), 
-                      pos = end(readsGR.m), strand = "-", 
-                      #removedG = GenomicRanges::elementMetadata(readsGR.m)$removedG, 
-                      stringsAsFactors = FALSE)
-  #-----------------------------------------------------------------------------
-  TSS <- rbind(TSS.p, TSS.m)
-  TSS <- TSS[,c("chr", "pos", "strand")]
-  TSS$tag_count <- 1
-  setDT(TSS)
-  TSS <- TSS[, as.integer(sum(tag_count)), by = list(chr, pos, strand)]
 
+  # Optimized processing for the plus strand
+  processPlusStrand <- function(reads, Genome) {
+    Gp <- which(substr(GenomicRanges::elementMetadata(reads)$seq, start = 1, stop = 1) == "G")
+    i <- 1
+    
+    while (length(Gp) > 0) {
+      # Identify mismatched G bases
+      G.mismatch <- Gp[getSeq(Genome, GenomicRanges::resize(reads[Gp], width = 1, fix = "start"), as.character = TRUE) != "G"]
+      # Adjust start position of reads with mismatched G
+      start(reads[G.mismatch]) <- start(reads[G.mismatch]) + as.integer(1)
+      i <- i + 1
+      # Update Gp for the next iteration
+      Gp <- G.mismatch[which(substr(GenomicRanges::elementMetadata(reads[G.mismatch])$seq, start = 1, stop = i) == paste(rep("G", i), collapse = ""))]
+    }
+    
+    # Create data table for plus strand TSS
+    data.table(chr = as.character(seqnames(reads)), pos = start(reads), strand = "+", stringsAsFactors = FALSE)
+  }
+
+  # Optimized processing for the minus strand
+  processMinusStrand <- function(reads, Genome) {
+    Gm <- which(substr(GenomicRanges::elementMetadata(reads)$seq, start = GenomicRanges::elementMetadata(reads)$read.length, stop = GenomicRanges::elementMetadata(reads)$read.length) == "C")
+    i <- 1
+    
+    while (length(Gm) > 0) {
+      # Identify mismatched C bases
+      G.mismatch <- Gm[getSeq(Genome, GenomicRanges::resize(reads[Gm], width = 1, fix = "start"), as.character = TRUE) != "G"]
+      # Adjust end position of reads with mismatched C
+      end(reads[G.mismatch]) <- end(reads[G.mismatch]) - as.integer(1)
+      i <- i + 1
+      # Update Gm for the next iteration
+      Gm <- G.mismatch[which(substr(GenomicRanges::elementMetadata(reads[G.mismatch])$seq, start = 1, stop = i) == paste(rep("C", i), collapse = ""))]
+    }
+    
+    # Create data table for minus strand TSS
+    data.table(chr = as.character(seqnames(reads)), pos = end(reads), strand = "-", stringsAsFactors = FALSE)
+  }
+
+  # Process plus and minus strands
+  TSS.p <- processPlusStrand(readsGR.p, Genome)
+  TSS.m <- processMinusStrand(readsGR.m, Genome)
+  
+  # Combine plus and minus strand TSS and summarize
+  TSS <- rbind(TSS.p, TSS.m)
+  TSS <- TSS[, .(tag_count = .N), by = .(chr, pos, strand)]
+  
   return(TSS)
 }
+
 
 ################################################################################
 ##.getTSS_from_bed function calls TSS from bed files
